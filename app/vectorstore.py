@@ -33,6 +33,8 @@ class ChromaStore:
     def __init__(self, path: str | None = None, client=None, prefix: str = "chunks"):
         self.client = client or chromadb.PersistentClient(path=path)
         self.prefix = prefix
+        # ponytail: one Chroma collection handle per tenant, unbounded; add eviction / a
+        # persistent per-tenant store (OpenSearch) at scale.
         self._cols: dict[str, object] = {}
 
     def _col(self, tenant: str):

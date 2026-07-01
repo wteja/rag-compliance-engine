@@ -25,7 +25,7 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
     id = Column(Integer, primary_key=True, autoincrement=True)
     ts = Column(DateTime, default=_now)
-    tenant_id = Column(String)
+    tenant_id = Column(String, index=True)
     user_id = Column(String)
     role = Column(String)
     query = Column(Text)

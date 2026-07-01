@@ -20,3 +20,10 @@ def test_missing_tenant_claim_raises():
                      settings.jwt_secret, algorithm=settings.jwt_algorithm)
     with pytest.raises(KeyError):
         decode_token(tok)
+
+
+def test_empty_tenant_claim_rejected():
+    tok = jwt.encode({"sub": "x", "groups": [], "role": "user", "tenant": ""},
+                     settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    with pytest.raises(Exception):
+        decode_token(tok)

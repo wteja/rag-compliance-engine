@@ -15,11 +15,14 @@ class Principal:
 
 def decode_token(token: str) -> Principal:
     payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    tenant = payload["tenant"]
+    if not tenant or not tenant.strip():
+        raise ValueError("empty tenant claim")
     return Principal(
         sub=payload["sub"],
         groups=payload["groups"],
         role=payload["role"],
-        tenant=payload["tenant"],
+        tenant=tenant,
     )
 
 
