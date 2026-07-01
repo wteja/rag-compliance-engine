@@ -82,3 +82,65 @@ class ChromaStore:
                 text=doc,
             ))
         return out
+
+
+class OpenSearchStore:
+    def __init__(self, url: str, dim: int, prefix: str = "chunks", client=None):
+        if client is None:
+            from opensearchpy import OpenSearch
+            client = OpenSearch(hosts=[url])
+        self.client = client
+        self.dim = dim
+        self.prefix = prefix
+        self._ensured: set[str] = set()
+
+    def _index(self, tenant: str) -> str:
+        return f"{self.prefix}__{tenant}"
+
+    def _ensure_index(self, tenant: str) -> None:
+        name = self._index(tenant)
+        if name in self._ensured:
+            return
+        if not self.client.indices.exists(index=name):
+            self.client.indices.create(index=name, body={
+                "settings": {"index.knn": True},
+                "mappings": {"properties": {
+                    "embedding": {"type": "knn_vector", "dimension": self.dim},
+                    "groups": {"type": "keyword"},
+                    "doc_id": {"type": "keyword"},
+                    "source": {"type": "keyword"},
+                    "page": {"type": "integer"},
+                    "chunk_id": {"type": "keyword"},
+                    "text": {"type": "text"},
+                }},
+            })
+        self._ensured.add(name)
+
+    @staticmethod
+    def _to_retrieved(hit, score=None) -> Retrieved:
+        s = hit["_source"]
+        return Retrieved(
+            chunk_id=s["chunk_id"], doc_id=s["doc_id"], source=s["source"],
+            page=s["page"], group=s["groups"],
+            score=hit["_score"] if score is None else score,
+            text=s["text"],
+        )
+
+    def add(self, chunk_id, embedding, text, metadata, tenant):
+        self._ensure_index(tenant)
+        self.client.index(index=self._index(tenant), id=chunk_id,
+                          body={**metadata, "text": text, "embedding": embedding})
+
+    def query(self, embedding, k, groups, tenant):
+        knn = {"vector": embedding, "k": k}
+        if groups is not None:
+            knn["filter"] = {"terms": {"groups": groups}}
+        res = self.client.search(index=self._index(tenant),
+                                 body={"size": k, "query": {"knn": {"embedding": knn}}})
+        return [self._to_retrieved(h) for h in res["hits"]["hits"]]
+
+    def corpus(self, tenant):
+        # ponytail: single match_all page (size 10000); use scroll/PIT for large corpora.
+        res = self.client.search(index=self._index(tenant),
+                                 body={"size": 10000, "query": {"match_all": {}}})
+        return [self._to_retrieved(h, score=0.0) for h in res["hits"]["hits"]]
