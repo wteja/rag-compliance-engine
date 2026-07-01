@@ -15,12 +15,18 @@ class Retrieved:
     group: str
     score: float
     text: str
+    dense_rank: int | None = None
+    lexical_rank: int | None = None
+    rrf_score: float | None = None
+    rerank_score: float | None = None
 
 
 class VectorStore(Protocol):
     def add(self, chunk_id: str, embedding: list[float], text: str, metadata: dict) -> None: ...
 
     def query(self, embedding: list[float], k: int, groups: list[str] | None) -> list[Retrieved]: ...
+
+    def corpus(self) -> list[Retrieved]: ...
 
 
 class ChromaStore:
@@ -51,5 +57,20 @@ class ChromaStore:
                 group=m["groups"],
                 score=res["distances"][0][i],
                 text=res["documents"][0][i],
+            ))
+        return out
+
+    def corpus(self) -> list[Retrieved]:
+        res = self.col.get(include=["documents", "metadatas"])
+        out = []
+        for cid, doc, m in zip(res["ids"], res["documents"], res["metadatas"]):
+            out.append(Retrieved(
+                chunk_id=cid,
+                doc_id=m["doc_id"],
+                source=m["source"],
+                page=m["page"],
+                group=m["groups"],
+                score=0.0,
+                text=doc,
             ))
         return out
