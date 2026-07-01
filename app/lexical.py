@@ -34,11 +34,15 @@ class BM25Index:
         if self._corpus:
             self._bm25 = BM25Okapi([_tokenize(c.text) for c in self._corpus])
             # Ensure minimum IDF for small corpora where all IDF values might be 0
-            min_idf = max(self._bm25.idf.values()) if self._bm25.idf else 0.0
-            if min_idf == 0:
-                min_idf = 0.25  # fallback minimum for degenerate cases
+            # ponytail: degenerate case — a tiny/non-discriminating corpus (e.g. a 2-doc
+            # test fixture) can drive every term's IDF to 0, which would zero out BM25
+            # scores entirely. Apply a small floor so ranking still differentiates by
+            # term frequency instead of collapsing to ties.
+            max_idf = max(self._bm25.idf.values()) if self._bm25.idf else 0.0
+            if max_idf == 0:
+                max_idf = 0.25  # fallback minimum for degenerate cases
                 for word in self._bm25.idf:
-                    self._bm25.idf[word] = min_idf
+                    self._bm25.idf[word] = max_idf
         else:
             self._bm25 = None
         self._dirty = False

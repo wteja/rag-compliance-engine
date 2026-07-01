@@ -10,8 +10,9 @@ RAG with access control, audit, and PII redaction enforced at the data layer —
    holds on both the dense (vector) arm and the lexical (BM25) arm.
 2. **Provable audit trail.** Every query logs who asked, which chunks were returned
    (id, source, score), how many were withheld by access control (`filtered_out_count`),
-   the exact prompt, the model, and the response. Note: the `score` field is a vector
-   distance (lower = closer match), not a similarity score.
+   the exact prompt, the model, and the response. Note: the `score` field is the
+   cross-encoder rerank relevance score (higher = more relevant), or the RRF fused
+   score if reranking fell back.
 3. **PII never enters the index.** Documents are redacted with Presidio before embedding.
 
 ## Architecture
@@ -40,10 +41,11 @@ flowchart LR
     style R fill:#e0e0ff,stroke:#00c
 ```
 
-The red nodes are the security boundary: access filtering happens **in both retrieval arms**, so
-finance chunks never enter a marketing user's candidate set — prompt injection can't reach data
-that was never retrieved. Providers sit behind `VectorStore` / `LLMProvider` interfaces
-(Chroma + Ollama now; AWS Bedrock + OpenSearch later).
+The red nodes are the security boundary: the dense arm enforces access **in the vector
+store** (a Chroma `WHERE groups ∈ user.groups` clause), while the in-memory BM25
+(lexical) arm has no WHERE clause and filters in the application layer before fusion.
+Providers sit behind `VectorStore` / `LLMProvider` interfaces (Chroma + Ollama now;
+AWS Bedrock + OpenSearch later).
 
 Retrieval is two-stage: dense (vector) and BM25 (lexical) recall are fused with
 Reciprocal Rank Fusion, then a cross-encoder reranks the candidates. **Both arms

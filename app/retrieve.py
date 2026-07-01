@@ -45,7 +45,7 @@ def _rerank_or_fallback(query, candidates, reranker):
 
 def retrieve(query, user_groups, store, lexical, llm, reranker, cfg) -> RetrievalResult:
     embedding = llm.embed(query)
-    dense_unf = store.query(embedding, cfg.dense_n, groups=None)
+    dense_unf = store.query(embedding, cfg.dense_n, groups=None)   # unfiltered — used ONLY for filtered_out counting
     lex_unf = lexical.query(query, cfg.lexical_n)
 
     # filtered_out: distinct chunks either arm surfaced (unfiltered) that the user can't see
@@ -54,7 +54,7 @@ def retrieve(query, user_groups, store, lexical, llm, reranker, cfg) -> Retrieva
         groups_by_id.setdefault(r.chunk_id, r.group)
     filtered_out = sum(1 for g in groups_by_id.values() if g not in user_groups)
 
-    dense_allowed = [r for r in dense_unf if r.group in user_groups]
+    dense_allowed = store.query(embedding, cfg.dense_n, groups=user_groups)   # access enforced in the vector store
     lex_allowed = [r for r in lex_unf if r.group in user_groups]
     dense_rank = {r.chunk_id: i for i, r in enumerate(dense_allowed)}
     lex_rank = {r.chunk_id: i for i, r in enumerate(lex_allowed)}
