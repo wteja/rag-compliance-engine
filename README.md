@@ -13,7 +13,10 @@ RAG with access control, audit, and PII redaction enforced at the data layer —
    the exact prompt, the model, and the response. Note: the `score` field is the
    cross-encoder rerank relevance score (higher = more relevant), or the RRF fused
    score if reranking fell back.
-3. **PII never enters the index.** Documents are redacted with Presidio before embedding.
+3. **PII redacted on the way in *and* the way out.** Documents are redacted with Presidio
+   before embedding, and every generated answer is redacted again before it leaves the API.
+   The audit records what the output pass removed (`output_redactions`), and if that pass
+   can't run, the query fails closed (500) rather than return an unverified answer.
 
 ## Architecture
 
@@ -27,7 +30,7 @@ flowchart LR
         J --> LEX[lexical: BM25, filter to groups]
         DENSE --> FUSE[RRF fuse]
         LEX --> FUSE
-        FUSE --> RR[cross-encoder rerank] --> PR[build prompt<br/>allowed chunks only] --> G[generate] --> ANS[answer + citations]
+        FUSE --> RR[cross-encoder rerank] --> PR[build prompt<br/>allowed chunks only] --> G[generate] --> OR[PII-redact output<br/>Presidio] --> ANS[answer + citations]
     end
     E1 -->|tag = group| DB[(ChromaDB)]
     DB --> DENSE
@@ -39,6 +42,7 @@ flowchart LR
     style DENSE fill:#ffe0e0,stroke:#c00,stroke-width:2px
     style LEX fill:#ffe0e0,stroke:#c00,stroke-width:2px
     style R fill:#e0e0ff,stroke:#00c
+    style OR fill:#e0e0ff,stroke:#00c
 ```
 
 The red nodes are the security boundary: the dense arm enforces access **in the vector
@@ -53,6 +57,10 @@ filter to the user's groups before fusion**, so the access guarantee holds on ev
 retrieval path — the new lexical arm can't surface a chunk the dense arm couldn't.
 
 ## Quickstart (5 minutes)
+
+> Slice 3 added an `output_redactions` audit column. If you ran an earlier slice, reset the
+> database first: `docker compose down -v` (drops the Postgres/Chroma volumes), then bring the
+> stack back up. Migrations (Alembic) are the production upgrade path; the demo recreates the DB.
 
 ```bash
 docker compose up -d --build
@@ -78,7 +86,7 @@ curl -s localhost:8000/audit -H "Authorization: Bearer <AUDITOR_TOKEN>" | jq '.[
 
 ## Roadmap
 
-Slice 2: hybrid retrieval + rerank ✅ · Slice 3: output-side PII · Slice 4: multi-tenant · Slice 5: AWS (Bedrock + OpenSearch).
+Slice 2: hybrid retrieval + rerank ✅ · Slice 3: output-side PII ✅ · Slice 4: multi-tenant · Slice 5: AWS (Bedrock + OpenSearch).
 
 ## Tests
 
