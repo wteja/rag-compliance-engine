@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     rrf_k: int = 60
     rerank_top_n: int = 20
     rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    backend: str = "local"
+    opensearch_url: str = "http://localhost:9200"
+    embed_dim: int = 768
+    aws_region: str = "us-east-1"
 
 
 settings = Settings()
