@@ -9,7 +9,7 @@ from app.auth import Principal
 from app.config import Settings
 from app.ingest import ingest
 from app.lexical import BM25Index
-from app.retrieve import retrieve, answer_query, rrf, ABSTAIN, LLMUnavailable
+from app.retrieve import retrieve, answer_query, rrf, ABSTAIN, LLMUnavailable, OutputRedactionError
 from app.vectorstore import ChromaStore
 
 
@@ -119,3 +119,43 @@ def test_rrf_rewards_agreement_across_arms():
     assert scores["a"] > scores["d"]
     # exact: b = 1/(60+2) + 1/(60+1)
     assert scores["b"] == 1 / 62 + 1 / 61
+
+
+def test_output_redaction_masks_generated_pii():
+    store, lexical, s = _seeded()
+
+    class PiiLLM(FakeLLM):
+        def generate(self, prompt):
+            return "Reach Jane at jane@acme.com or 415-555-0199."
+
+    p = Principal("alice", ["marketing"], "user")
+    out = answer_query("campaign", p, store, lexical, PiiLLM(), FakeReranker(), s, CFG)
+
+    assert "jane@acme.com" not in out["answer"]
+    assert "415-555-0199" not in out["answer"]
+    row = read_audit(s)[0]
+    assert "jane@acme.com" not in (row.response or "")
+    assert row.output_redactions.get("EMAIL_ADDRESS") == 1
+
+
+def test_clean_output_records_empty_dict():
+    store, lexical, s = _seeded()
+    p = Principal("alice", ["marketing"], "user")
+    # default FakeLLM.generate returns "generated answer" (no PII)
+    answer_query("campaign", p, store, lexical, FakeLLM(), FakeReranker(), s, CFG)
+    assert read_audit(s)[0].output_redactions == {}
+
+
+def test_output_redaction_failure_raises_and_audits_null(monkeypatch):
+    store, lexical, s = _seeded()
+
+    def boom(text):
+        raise RuntimeError("presidio down")
+
+    monkeypatch.setattr("app.retrieve.redact_with_counts", boom)
+    p = Principal("alice", ["marketing"], "user")
+    with pytest.raises(OutputRedactionError):
+        answer_query("campaign", p, store, lexical, FakeLLM(), FakeReranker(), s, CFG)
+    row = read_audit(s)[0]
+    assert row.response is None
+    assert row.output_redactions is None

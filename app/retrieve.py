@@ -3,12 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from app.audit import write_audit
+from app.pii import redact_with_counts
 from app.vectorstore import Retrieved
 
 ABSTAIN = "No accessible information answers this."
 
 
 class LLMUnavailable(Exception):
+    pass
+
+
+class OutputRedactionError(Exception):
     pass
 
 
@@ -107,14 +112,20 @@ def answer_query(query, principal, store, lexical, llm, reranker, session, cfg) 
     )
 
     if not res.chunks:
-        write_audit(session, **record, response=ABSTAIN)
+        write_audit(session, **record, response=ABSTAIN, output_redactions=None)
         return {"answer": ABSTAIN, "citations": citations}
 
     try:
         answer = llm.generate(res.prompt)
     except Exception as e:
-        write_audit(session, **record, response=None)
+        write_audit(session, **record, response=None, output_redactions=None)
         raise LLMUnavailable() from e
 
-    write_audit(session, **record, response=answer)
-    return {"answer": answer, "citations": citations}
+    try:
+        clean, redactions = redact_with_counts(answer)
+    except Exception as e:
+        write_audit(session, **record, response=None, output_redactions=None)
+        raise OutputRedactionError() from e
+
+    write_audit(session, **record, response=clean, output_redactions=redactions)
+    return {"answer": clean, "citations": citations}

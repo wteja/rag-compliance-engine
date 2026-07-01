@@ -116,3 +116,14 @@ def test_ingest_invalidates_bm25_cache():
     # dense arm alone would also surface this chunk (FakeLLM.embed is constant), so only
     # lexical_rank being set proves the BM25 index was actually rebuilt after ingest.
     assert row["retrieved_chunks"][0]["lexical_rank"] is not None
+
+
+def test_output_redaction_failure_returns_500(monkeypatch):
+    def boom(text):
+        raise RuntimeError("presidio down")
+
+    monkeypatch.setattr("app.retrieve.redact_with_counts", boom)
+    client = _client()
+    _ingest(client, b"Marketing launch plan across channels.", "mkt.txt", ["marketing"])
+    r = client.post("/query", headers=_bearer("user", ["marketing"]), json={"query": "launch"})
+    assert r.status_code == 500

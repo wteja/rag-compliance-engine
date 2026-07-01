@@ -33,6 +33,7 @@ class AuditLog(Base):
     model = Column(String)
     model_version = Column(String)
     response = Column(Text)
+    output_redactions = Column(JSON)
 
 
 def make_session_factory(database_url: str) -> sessionmaker:

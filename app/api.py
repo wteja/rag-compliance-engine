@@ -7,7 +7,7 @@ from app.auth import Principal, decode_token
 from app.audit import read_audit
 from app.config import settings
 from app.ingest import ingest
-from app.retrieve import LLMUnavailable, answer_query
+from app.retrieve import LLMUnavailable, OutputRedactionError, answer_query
 
 
 class QueryBody(BaseModel):
@@ -69,6 +69,8 @@ def create_app(store, lexical, llm, reranker, session_factory) -> FastAPI:
             return answer_query(body.query, principal, store, lexical, llm, reranker, session, settings)
         except LLMUnavailable:
             raise HTTPException(status_code=503, detail="generation backend unavailable")
+        except OutputRedactionError:
+            raise HTTPException(status_code=500, detail="output redaction failed")
 
     @app.get("/audit")
     def audit(
@@ -82,6 +84,7 @@ def create_app(store, lexical, llm, reranker, session_factory) -> FastAPI:
                 "retrieved_chunks": r.retrieved_chunks, "filtered_out_count": r.filtered_out_count,
                 "prompt_sent": r.prompt_sent, "model": r.model,
                 "model_version": r.model_version, "response": r.response,
+                "output_redactions": r.output_redactions,
             }
             for r in read_audit(session)
         ]
