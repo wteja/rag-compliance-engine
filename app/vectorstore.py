@@ -22,24 +22,30 @@ class Retrieved:
 
 
 class VectorStore(Protocol):
-    def add(self, chunk_id: str, embedding: list[float], text: str, metadata: dict) -> None: ...
+    def add(self, chunk_id: str, embedding: list[float], text: str, metadata: dict, tenant: str) -> None: ...
 
-    def query(self, embedding: list[float], k: int, groups: list[str] | None) -> list[Retrieved]: ...
+    def query(self, embedding: list[float], k: int, groups: list[str] | None, tenant: str) -> list[Retrieved]: ...
 
-    def corpus(self) -> list[Retrieved]: ...
+    def corpus(self, tenant: str) -> list[Retrieved]: ...
 
 
 class ChromaStore:
-    def __init__(self, path: str | None = None, client=None, collection: str = "chunks"):
+    def __init__(self, path: str | None = None, client=None, prefix: str = "chunks"):
         self.client = client or chromadb.PersistentClient(path=path)
-        self.col = self.client.get_or_create_collection(collection)
+        self.prefix = prefix
+        self._cols: dict[str, object] = {}
 
-    def add(self, chunk_id, embedding, text, metadata):
-        self.col.add(ids=[chunk_id], embeddings=[embedding], documents=[text], metadatas=[metadata])
+    def _col(self, tenant: str):
+        if tenant not in self._cols:
+            self._cols[tenant] = self.client.get_or_create_collection(f"{self.prefix}__{tenant}")
+        return self._cols[tenant]
 
-    def query(self, embedding, k, groups=None):
+    def add(self, chunk_id, embedding, text, metadata, tenant):
+        self._col(tenant).add(ids=[chunk_id], embeddings=[embedding], documents=[text], metadatas=[metadata])
+
+    def query(self, embedding, k, groups, tenant):
         where = {"groups": {"$in": groups}} if groups is not None else None
-        res = self.col.query(
+        res = self._col(tenant).query(
             query_embeddings=[embedding],
             n_results=k,
             where=where,
@@ -60,8 +66,8 @@ class ChromaStore:
             ))
         return out
 
-    def corpus(self) -> list[Retrieved]:
-        res = self.col.get(include=["documents", "metadatas"])
+    def corpus(self, tenant):
+        res = self._col(tenant).get(include=["documents", "metadatas"])
         out = []
         for cid, doc, m in zip(res["ids"], res["documents"], res["metadatas"]):
             out.append(Retrieved(

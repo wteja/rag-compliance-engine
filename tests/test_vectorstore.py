@@ -6,45 +6,54 @@ from app.vectorstore import ChromaStore, Retrieved
 
 
 def _store():
-    return ChromaStore(client=chromadb.EphemeralClient(), collection=f"test-{uuid.uuid4().hex}")
+    return ChromaStore(client=chromadb.EphemeralClient(), prefix=f"test-{uuid.uuid4().hex}")
 
 
-def _add(store, cid, group, vec):
+def _add(store, cid, group, vec, tenant):
     store.add(cid, vec, f"text-{cid}",
-              {"doc_id": "d", "source": "s.txt", "page": 1, "groups": group, "chunk_id": cid})
+              {"doc_id": "d", "source": "s.txt", "page": 1, "groups": group, "chunk_id": cid},
+              tenant)
 
 
 def test_filtered_query_excludes_other_group():
     store = _store()
-    _add(store, "fin1", "finance", [0.1, 0.2, 0.3])
-    _add(store, "mkt1", "marketing", [0.1, 0.2, 0.3])
+    _add(store, "fin1", "finance", [0.1, 0.2, 0.3], "acme")
+    _add(store, "mkt1", "marketing", [0.1, 0.2, 0.3], "acme")
 
-    allowed = store.query([0.1, 0.2, 0.3], k=4, groups=["marketing"])
-    ids = {r.chunk_id for r in allowed}
-    assert ids == {"mkt1"}
+    allowed = store.query([0.1, 0.2, 0.3], k=4, groups=["marketing"], tenant="acme")
+    assert {r.chunk_id for r in allowed} == {"mkt1"}
     assert allowed[0].group == "marketing"
 
 
-def test_unfiltered_query_returns_all():
+def test_unfiltered_query_returns_all_in_tenant():
     store = _store()
-    _add(store, "fin1", "finance", [0.1, 0.2, 0.3])
-    _add(store, "mkt1", "marketing", [0.1, 0.2, 0.3])
+    _add(store, "fin1", "finance", [0.1, 0.2, 0.3], "acme")
+    _add(store, "mkt1", "marketing", [0.1, 0.2, 0.3], "acme")
 
-    everything = store.query([0.1, 0.2, 0.3], k=4, groups=None)
+    everything = store.query([0.1, 0.2, 0.3], k=4, groups=None, tenant="acme")
     assert {r.chunk_id for r in everything} == {"fin1", "mkt1"}
+
+
+def test_store_isolates_by_tenant():
+    store = _store()
+    _add(store, "a1", "finance", [0.1, 0.2, 0.3], "acme")
+    _add(store, "b1", "finance", [0.1, 0.2, 0.3], "globex")
+
+    acme = store.query([0.1, 0.2, 0.3], k=10, groups=None, tenant="acme")
+    assert {r.chunk_id for r in acme} == {"a1"}  # globex chunk not in acme's collection
+    assert {c.chunk_id for c in store.corpus("acme")} == {"a1"}
+    assert {c.chunk_id for c in store.corpus("globex")} == {"b1"}
 
 
 def test_corpus_returns_all_chunks_with_text_and_group():
     store = _store()
     store.add("c1", [0.1, 0.2, 0.3], "finance text",
-              {"doc_id": "d1", "source": "fin.txt", "page": 1, "groups": "finance", "chunk_id": "c1"})
+              {"doc_id": "d1", "source": "fin.txt", "page": 1, "groups": "finance", "chunk_id": "c1"}, "acme")
     store.add("c2", [0.4, 0.5, 0.6], "marketing text",
-              {"doc_id": "d2", "source": "mkt.txt", "page": 1, "groups": "marketing", "chunk_id": "c2"})
+              {"doc_id": "d2", "source": "mkt.txt", "page": 1, "groups": "marketing", "chunk_id": "c2"}, "acme")
 
-    corpus = store.corpus()
-
-    assert {c.chunk_id for c in corpus} == {"c1", "c2"}
-    by_id = {c.chunk_id: c for c in corpus}
+    by_id = {c.chunk_id: c for c in store.corpus("acme")}
+    assert set(by_id) == {"c1", "c2"}
     assert by_id["c1"].text == "finance text"
     assert by_id["c1"].group == "finance"
     assert by_id["c2"].source == "mkt.txt"

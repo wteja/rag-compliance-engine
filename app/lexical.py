@@ -14,44 +14,43 @@ def _tokenize(text: str) -> list[str]:
 
 
 class BM25Index:
-    """Lexical (BM25) retrieval arm over the vector store's corpus.
+    """Per-tenant lexical (BM25) retrieval arm — one in-memory index per tenant.
 
-    # ponytail: rebuild-on-ingest, O(corpus) in-memory; move to a persistent
-    # BM25 index (OpenSearch) at scale.
+    # ponytail: rebuild-on-ingest, O(corpus) in-memory, one index per tenant; move to a
+    # persistent BM25 index (OpenSearch) at scale.
     """
 
     def __init__(self, store: VectorStore):
         self.store = store
-        self._bm25: BM25Okapi | None = None
-        self._corpus: list[Retrieved] = []
-        self._dirty = True
+        self._indexes: dict[str, tuple[BM25Okapi | None, list[Retrieved]]] = {}
+        self._dirty: set[str] = set()
 
-    def mark_dirty(self) -> None:
-        self._dirty = True
+    def mark_dirty(self, tenant: str) -> None:
+        self._dirty.add(tenant)
 
-    def _rebuild(self) -> None:
-        self._corpus = self.store.corpus()
-        if self._corpus:
-            self._bm25 = BM25Okapi([_tokenize(c.text) for c in self._corpus])
-            # Ensure minimum IDF for small corpora where all IDF values might be 0
+    def _rebuild(self, tenant: str) -> None:
+        corpus = self.store.corpus(tenant)
+        if corpus:
+            bm25 = BM25Okapi([_tokenize(c.text) for c in corpus])
             # ponytail: degenerate case — a tiny/non-discriminating corpus (e.g. a 2-doc
             # test fixture) can drive every term's IDF to 0, which would zero out BM25
             # scores entirely. Apply a small floor so ranking still differentiates by
             # term frequency instead of collapsing to ties.
-            max_idf = max(self._bm25.idf.values()) if self._bm25.idf else 0.0
+            max_idf = max(bm25.idf.values()) if bm25.idf else 0.0
             if max_idf == 0:
-                max_idf = 0.25  # fallback minimum for degenerate cases
-                for word in self._bm25.idf:
-                    self._bm25.idf[word] = max_idf
+                for word in bm25.idf:
+                    bm25.idf[word] = 0.25
         else:
-            self._bm25 = None
-        self._dirty = False
+            bm25 = None
+        self._indexes[tenant] = (bm25, corpus)
+        self._dirty.discard(tenant)
 
-    def query(self, text: str, n: int) -> list[Retrieved]:
-        if self._dirty:
-            self._rebuild()
-        if not self._bm25:
+    def query(self, text: str, n: int, tenant: str) -> list[Retrieved]:
+        if tenant in self._dirty or tenant not in self._indexes:
+            self._rebuild(tenant)
+        bm25, corpus = self._indexes[tenant]
+        if not bm25:
             return []
-        scores = self._bm25.get_scores(_tokenize(text))
-        ranked = sorted(zip(self._corpus, scores), key=lambda pair: pair[1], reverse=True)
+        scores = bm25.get_scores(_tokenize(text))
+        ranked = sorted(zip(corpus, scores), key=lambda pair: pair[1], reverse=True)
         return [replace(chunk, score=float(score)) for chunk, score in ranked[:n]]
