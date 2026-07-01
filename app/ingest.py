@@ -39,7 +39,7 @@ def parse(file_bytes: bytes, filename: str) -> list[tuple[int, str]]:
     raise ValueError(f"unsupported format: .{ext}")
 
 
-def ingest(file_bytes, filename, groups, uploaded_by, store, llm, session) -> str:
+def ingest(file_bytes, filename, groups, uploaded_by, store, llm, session, lexical=None) -> str:
     ext = filename.rsplit(".", 1)[-1].lower()
     if ext not in _SUPPORTED:
         raise ValueError(f"unsupported format: .{ext}")
@@ -61,6 +61,9 @@ def ingest(file_bytes, filename, groups, uploaded_by, store, llm, session) -> st
 
     for cid, emb, clean, meta in staged:
         store.add(cid, emb, clean, meta)
+
+    if lexical is not None:
+        lexical.mark_dirty()
 
     session.add(Document(id=doc_id, source=filename, uploaded_by=uploaded_by, groups=",".join(groups)))
     session.commit()

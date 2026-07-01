@@ -1,11 +1,13 @@
 import uuid
 
 import chromadb
+from dataclasses import replace
 from fastapi.testclient import TestClient
 
 from app.api import create_app
 from app.audit import make_session_factory
 from app.auth import make_token
+from app.lexical import BM25Index
 from app.vectorstore import ChromaStore
 
 
@@ -19,10 +21,16 @@ class FakeLLM:
         return "generated answer"
 
 
+class FakeReranker:
+    def rerank(self, query, candidates):
+        return [replace(c, rerank_score=c.rrf_score or 0.0) for c in candidates]
+
+
 def _client(llm=None):
     store = ChromaStore(client=chromadb.EphemeralClient(), collection=f"test-{uuid.uuid4().hex}")
+    lexical = BM25Index(store)
     Session = make_session_factory("sqlite:///:memory:")
-    app = create_app(store, llm or FakeLLM(), Session)
+    app = create_app(store, lexical, llm or FakeLLM(), FakeReranker(), Session)
     return TestClient(app)
 
 
@@ -78,3 +86,28 @@ def test_llm_down_503():
     _ingest(client, b"Marketing plan.", "mkt.txt", ["marketing"])
     r = client.post("/query", headers=_bearer("user", ["marketing"]), json={"query": "q"})
     assert r.status_code == 503
+
+
+def test_hybrid_end_to_end_records_provenance():
+    client = _client()
+    assert _ingest(client, b"Quarterly revenue and margin.", "fin.txt", ["finance"]).status_code == 200
+    assert _ingest(client, b"Marketing launch plan across channels.", "mkt.txt", ["marketing"]).status_code == 200
+
+    r = client.post("/query", headers=_bearer("user", ["marketing"]), json={"query": "launch plan"})
+    assert r.status_code == 200
+    assert {c["source"] for c in r.json()["citations"]} == {"mkt.txt"}
+
+    row = client.get("/audit", headers=_bearer("auditor", [])).json()[0]
+    assert row["filtered_out_count"] == 1
+    chunk = row["retrieved_chunks"][0]
+    assert "rrf_score" in chunk and "rerank_score" in chunk
+    assert chunk["dense_rank"] is not None or chunk["lexical_rank"] is not None
+
+
+def test_ingest_invalidates_bm25_cache():
+    client = _client()
+    # first query builds the (empty) index; then ingest must make the new doc searchable
+    client.post("/query", headers=_bearer("user", ["marketing"]), json={"query": "warm up"})
+    _ingest(client, b"Marketing launch plan across channels.", "mkt.txt", ["marketing"])
+    r = client.post("/query", headers=_bearer("user", ["marketing"]), json={"query": "launch plan"})
+    assert {c["source"] for c in r.json()["citations"]} == {"mkt.txt"}  # index rebuilt after ingest

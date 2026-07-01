@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from app.auth import Principal, decode_token
 from app.audit import read_audit
+from app.config import settings
 from app.ingest import ingest
 from app.retrieve import LLMUnavailable, answer_query
 
@@ -22,7 +23,7 @@ def _principal(authorization: str | None) -> Principal:
         raise HTTPException(status_code=401, detail="invalid token")
 
 
-def create_app(store, llm, session_factory) -> FastAPI:
+def create_app(store, lexical, llm, reranker, session_factory) -> FastAPI:
     app = FastAPI(title="RAG Compliance Engine")
 
     def get_principal(authorization: str | None = Header(default=None)) -> Principal:
@@ -53,7 +54,7 @@ def create_app(store, llm, session_factory) -> FastAPI:
         session=Depends(get_session),
     ):
         try:
-            doc_id = ingest(file.file.read(), file.filename, groups, principal.sub, store, llm, session)
+            doc_id = ingest(file.file.read(), file.filename, groups, principal.sub, store, llm, session, lexical=lexical)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         return {"doc_id": doc_id}
@@ -65,7 +66,7 @@ def create_app(store, llm, session_factory) -> FastAPI:
         session=Depends(get_session),
     ):
         try:
-            return answer_query(body.query, principal, store, llm, session, k=_top_k())
+            return answer_query(body.query, principal, store, lexical, llm, reranker, session, settings)
         except LLMUnavailable:
             raise HTTPException(status_code=503, detail="generation backend unavailable")
 
@@ -86,8 +87,3 @@ def create_app(store, llm, session_factory) -> FastAPI:
         ]
 
     return app
-
-
-def _top_k() -> int:
-    from app.config import settings
-    return settings.top_k
