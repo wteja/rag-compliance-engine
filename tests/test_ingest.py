@@ -31,14 +31,14 @@ def test_redact_masks_email_and_phone():
 
 
 def test_ingest_stores_one_copy_per_group_redacted():
-    store = ChromaStore(client=chromadb.EphemeralClient(), collection=f"test-{uuid.uuid4().hex}")
+    store = ChromaStore(client=chromadb.EphemeralClient(), prefix=f"test-{uuid.uuid4().hex}")
     Session = make_session_factory("sqlite:///:memory:")
     s = Session()
     doc_id = ingest(b"Email jane@acme.com about Q3.", "memo.txt",
-                    ["finance", "legal"], "admin", store, FakeLLM(), s)
+                    ["finance", "legal"], "admin", "acme", store, FakeLLM(), s)
 
-    fin = store.query([0.1, 0.2, 0.3], k=10, groups=["finance"])
-    legal = store.query([0.1, 0.2, 0.3], k=10, groups=["legal"])
+    fin = store.query([0.1, 0.2, 0.3], k=10, groups=["finance"], tenant="acme")
+    legal = store.query([0.1, 0.2, 0.3], k=10, groups=["legal"], tenant="acme")
     assert len(fin) == 1 and len(legal) == 1
     assert fin[0].doc_id == doc_id
     assert "jane@acme.com" not in fin[0].text
@@ -46,4 +46,4 @@ def test_ingest_stores_one_copy_per_group_redacted():
 
 def test_parse_rejects_unsupported_format():
     with pytest.raises(ValueError):
-        ingest(b"x", "data.csv", ["finance"], "admin", None, FakeLLM(), None)
+        ingest(b"x", "data.csv", ["finance"], "admin", "acme", None, FakeLLM(), None)

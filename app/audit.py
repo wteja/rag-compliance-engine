@@ -14,6 +14,7 @@ def _now():
 class Document(Base):
     __tablename__ = "documents"
     id = Column(String, primary_key=True)
+    tenant_id = Column(String)
     source = Column(String)
     uploaded_by = Column(String)
     groups = Column(String)
@@ -24,6 +25,7 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
     id = Column(Integer, primary_key=True, autoincrement=True)
     ts = Column(DateTime, default=_now)
+    tenant_id = Column(String)
     user_id = Column(String)
     role = Column(String)
     query = Column(Text)
@@ -50,5 +52,11 @@ def write_audit(session, **fields) -> None:
     session.commit()
 
 
-def read_audit(session, limit: int = 100):
-    return session.query(AuditLog).order_by(AuditLog.ts.desc(), AuditLog.id.desc()).limit(limit).all()
+def read_audit(session, tenant, limit: int = 100):
+    return (
+        session.query(AuditLog)
+        .filter(AuditLog.tenant_id == tenant)
+        .order_by(AuditLog.ts.desc(), AuditLog.id.desc())
+        .limit(limit)
+        .all()
+    )

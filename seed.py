@@ -20,11 +20,11 @@ DOCS = [
     (b"Marketing plan: launch campaign in August across social channels.", "marketing-plan.txt", ["marketing"]),
 ]
 for content, name, groups in DOCS:
-    doc_id = ingest(content, name, groups, "admin", store, llm, session)
+    doc_id = ingest(content, name, groups, "admin", "acme", store, llm, session)
     print(f"ingested {name} -> {doc_id} (groups={groups})")
 
 print("\n--- tokens (use as 'Authorization: Bearer <token>') ---")
-print("admin   :", make_token("admin", ["finance", "marketing"], "admin"))
-print("alice   :", make_token("alice", ["marketing"], "user"))
-print("bob     :", make_token("bob", ["finance"], "user"))
-print("auditor :", make_token("auditor", [], "auditor"))
+print("admin   :", make_token("admin", ["finance", "marketing"], "admin", "acme"))
+print("alice   :", make_token("alice", ["marketing"], "user", "acme"))
+print("bob     :", make_token("bob", ["finance"], "user", "acme"))
+print("auditor :", make_token("auditor", [], "auditor", "acme"))

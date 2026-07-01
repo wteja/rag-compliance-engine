@@ -54,7 +54,8 @@ def create_app(store, lexical, llm, reranker, session_factory) -> FastAPI:
         session=Depends(get_session),
     ):
         try:
-            doc_id = ingest(file.file.read(), file.filename, groups, principal.sub, store, llm, session, lexical=lexical)
+            doc_id = ingest(file.file.read(), file.filename, groups, principal.sub, principal.tenant,
+                            store, llm, session, lexical=lexical)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         return {"doc_id": doc_id}
@@ -80,13 +81,14 @@ def create_app(store, lexical, llm, reranker, session_factory) -> FastAPI:
         return [
             {
                 "id": r.id, "ts": r.ts.isoformat() if r.ts else None,
+                "tenant_id": r.tenant_id,
                 "user_id": r.user_id, "role": r.role, "query": r.query,
                 "retrieved_chunks": r.retrieved_chunks, "filtered_out_count": r.filtered_out_count,
                 "prompt_sent": r.prompt_sent, "model": r.model,
                 "model_version": r.model_version, "response": r.response,
                 "output_redactions": r.output_redactions,
             }
-            for r in read_audit(session)
+            for r in read_audit(session, principal.tenant)
         ]
 
     return app

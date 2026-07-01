@@ -1,12 +1,14 @@
 import uuid
 
 import chromadb
+import jwt
 from dataclasses import replace
 from fastapi.testclient import TestClient
 
 from app.api import create_app
 from app.audit import make_session_factory
 from app.auth import make_token
+from app.config import settings
 from app.lexical import BM25Index
 from app.vectorstore import ChromaStore
 
@@ -27,7 +29,7 @@ class FakeReranker:
 
 
 def _client(llm=None):
-    store = ChromaStore(client=chromadb.EphemeralClient(), collection=f"test-{uuid.uuid4().hex}")
+    store = ChromaStore(client=chromadb.EphemeralClient(), prefix=f"test-{uuid.uuid4().hex}")
     lexical = BM25Index(store)
     Session = make_session_factory("sqlite:///:memory:")
     app = create_app(store, lexical, llm or FakeLLM(), FakeReranker(), Session)
@@ -38,10 +40,10 @@ def _bearer(role, groups, tenant="acme"):
     return {"Authorization": f"Bearer {make_token('u-' + role, groups, role, tenant)}"}
 
 
-def _ingest(client, content, filename, groups):
+def _ingest(client, content, filename, groups, tenant="acme"):
     return client.post(
         "/documents",
-        headers=_bearer("admin", ["finance", "marketing"]),
+        headers=_bearer("admin", ["finance", "marketing"], tenant),
         files={"file": (filename, content, "text/plain")},
         data={"groups": groups},
     )
@@ -127,3 +129,27 @@ def test_output_redaction_failure_returns_500(monkeypatch):
     _ingest(client, b"Marketing launch plan across channels.", "mkt.txt", ["marketing"])
     r = client.post("/query", headers=_bearer("user", ["marketing"]), json={"query": "launch"})
     assert r.status_code == 500
+
+
+def test_tenant_isolation_end_to_end():
+    client = _client()
+    assert _ingest(client, b"Finance figures Q3.", "acme-fin.txt", ["finance"], tenant="acme").status_code == 200
+    assert _ingest(client, b"Finance figures Q3.", "globex-fin.txt", ["finance"], tenant="globex").status_code == 200
+
+    # acme finance user sees only acme's chunk, never globex's (identical group)
+    r = client.post("/query", headers=_bearer("user", ["finance"], "acme"), json={"query": "figures"})
+    assert r.status_code == 200
+    assert {c["source"] for c in r.json()["citations"]} == {"acme-fin.txt"}
+
+    # acme auditor sees only acme's audit rows
+    audit = client.get("/audit", headers=_bearer("auditor", [], "acme")).json()
+    assert len(audit) == 1
+    assert audit[0]["tenant_id"] == "acme"
+
+
+def test_missing_tenant_claim_401():
+    client = _client()
+    tok = jwt.encode({"sub": "x", "groups": ["finance"], "role": "user"},
+                     settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    r = client.post("/query", headers={"Authorization": f"Bearer {tok}"}, json={"query": "q"})
+    assert r.status_code == 401

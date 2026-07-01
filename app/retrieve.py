@@ -48,10 +48,10 @@ def _rerank_or_fallback(query, candidates, reranker):
         return sorted(candidates, key=lambda c: c.rrf_score or 0.0, reverse=True)
 
 
-def retrieve(query, user_groups, store, lexical, llm, reranker, cfg) -> RetrievalResult:
+def retrieve(query, user_groups, tenant, store, lexical, llm, reranker, cfg) -> RetrievalResult:
     embedding = llm.embed(query)
-    dense_unf = store.query(embedding, cfg.dense_n, groups=None)   # unfiltered — used ONLY for filtered_out counting
-    lex_unf = lexical.query(query, cfg.lexical_n)
+    dense_unf = store.query(embedding, cfg.dense_n, groups=None, tenant=tenant)   # unfiltered — used ONLY for filtered_out counting
+    lex_unf = lexical.query(query, cfg.lexical_n, tenant)
 
     # filtered_out: distinct chunks either arm surfaced (unfiltered) that the user can't see
     groups_by_id: dict[str, str] = {}
@@ -59,7 +59,7 @@ def retrieve(query, user_groups, store, lexical, llm, reranker, cfg) -> Retrieva
         groups_by_id.setdefault(r.chunk_id, r.group)
     filtered_out = sum(1 for g in groups_by_id.values() if g not in user_groups)
 
-    dense_allowed = store.query(embedding, cfg.dense_n, groups=user_groups)   # access enforced in the vector store
+    dense_allowed = store.query(embedding, cfg.dense_n, groups=user_groups, tenant=tenant)   # access enforced in the vector store
     lex_allowed = [r for r in lex_unf if r.group in user_groups]
     dense_rank = {r.chunk_id: i for i, r in enumerate(dense_allowed)}
     lex_rank = {r.chunk_id: i for i, r in enumerate(lex_allowed)}
@@ -89,12 +89,13 @@ def retrieve(query, user_groups, store, lexical, llm, reranker, cfg) -> Retrieva
 
 
 def answer_query(query, principal, store, lexical, llm, reranker, session, cfg) -> dict:
-    res = retrieve(query, principal.groups, store, lexical, llm, reranker, cfg)
+    res = retrieve(query, principal.groups, principal.tenant, store, lexical, llm, reranker, cfg)
     citations = [
         {"source": c.source, "page": c.page, "chunk_id": c.chunk_id, "score": c.score}
         for c in res.chunks
     ]
     record = dict(
+        tenant_id=principal.tenant,
         user_id=principal.sub,
         role=principal.role,
         query=query,
