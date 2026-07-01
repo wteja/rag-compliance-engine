@@ -88,9 +88,31 @@ Then pull the audit record and see `filtered_out_count` prove the finance chunk 
 curl -s localhost:8000/audit -H "Authorization: Bearer <AUDITOR_TOKEN>" | jq '.[0]'
 ```
 
+## Deploying on AWS (Bedrock + OpenSearch)
+
+The retrieval and LLM layers sit behind `VectorStore` / `LLMProvider` interfaces, so switching
+from the local stack to AWS is one env var — no pipeline changes:
+
+```bash
+RCE_BACKEND=aws \
+RCE_OPENSEARCH_URL=https://<your-opensearch-endpoint> \
+RCE_EMBED_MODEL=amazon.titan-embed-text-v2:0 \
+RCE_EMBED_DIM=1024 \
+RCE_GEN_MODEL=anthropic.claude-3-5-sonnet-20240620-v1:0 \
+RCE_AWS_REGION=us-east-1
+# plus standard AWS credentials in the environment
+```
+
+`local` (default) uses Ollama + ChromaDB; `aws` uses Bedrock (embeddings + Converse) and
+OpenSearch (per-tenant kNN indexes with the same group access filter).
+
+> The AWS providers are implemented against the `boto3` / `opensearch-py` contracts and covered
+> by unit tests with mocked clients; they are not exercised against live AWS in this repo. Point
+> them at a real account by setting the variables above.
+
 ## Roadmap
 
-Slice 2: hybrid retrieval + rerank ✅ · Slice 3: output-side PII ✅ · Slice 4: multi-tenant ✅ · Slice 5: AWS (Bedrock + OpenSearch).
+Slice 2: hybrid retrieval + rerank ✅ · Slice 3: output-side PII ✅ · Slice 4: multi-tenant ✅ · Slice 5: AWS (Bedrock + OpenSearch) ✅.
 
 ## Tests
 
