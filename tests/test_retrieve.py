@@ -6,7 +6,7 @@ import pytest
 from app.audit import make_session_factory, read_audit
 from app.auth import Principal
 from app.ingest import ingest
-from app.retrieve import retrieve, answer_query, ABSTAIN, LLMUnavailable
+from app.retrieve import retrieve, answer_query, ABSTAIN, LLMUnavailable, rrf
 from app.vectorstore import ChromaStore
 
 
@@ -59,3 +59,12 @@ def test_answer_query_audits_on_llm_failure_then_raises():
     row = read_audit(s)[0]
     assert row.response is None
     assert row.filtered_out_count == 1
+
+
+def test_rrf_rewards_agreement_across_arms():
+    scores = rrf({"dense": ["a", "b", "c"], "lexical": ["b", "a", "d"]}, k=60)
+    # 'a' and 'b' appear in both arms near the top → outrank single-arm 'c'/'d'
+    assert scores["b"] > scores["c"]
+    assert scores["a"] > scores["d"]
+    # exact: b = 1/(60+2) + 1/(60+1)
+    assert scores["b"] == 1 / 62 + 1 / 61

@@ -19,6 +19,14 @@ class RetrievalResult:
     prompt: str
 
 
+def rrf(arm_rankings: dict[str, list[str]], k: int) -> dict[str, float]:
+    scores: dict[str, float] = {}
+    for ids in arm_rankings.values():
+        for rank, cid in enumerate(ids, start=1):
+            scores[cid] = scores.get(cid, 0.0) + 1.0 / (k + rank)
+    return scores
+
+
 def _build_prompt(query: str, chunks: list[Retrieved]) -> str:
     context = "\n\n".join(f"[{c.source} p{c.page}] {c.text}" for c in chunks)
     return (
