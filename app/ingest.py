@@ -1,14 +1,10 @@
 import io
 from uuid import uuid4
 
-from presidio_analyzer import AnalyzerEngine
-from presidio_anonymizer import AnonymizerEngine
 from pypdf import PdfReader
 
 from app.audit import Document
-
-_analyzer = AnalyzerEngine()
-_anonymizer = AnonymizerEngine()
+from app.pii import redact
 
 _SUPPORTED = ("pdf", "txt", "md")
 
@@ -22,11 +18,6 @@ def chunk_text(text: str, size: int = 500, overlap: int = 50) -> list[str]:
         chunks.append(text[start:start + size])
         start += size - overlap
     return chunks
-
-
-def redact(text: str) -> str:
-    results = _analyzer.analyze(text=text, language="en")
-    return _anonymizer.anonymize(text=text, analyzer_results=results).text
 
 
 def parse(file_bytes: bytes, filename: str) -> list[tuple[int, str]]:
