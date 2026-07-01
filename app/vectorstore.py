@@ -105,6 +105,9 @@ class OpenSearchStore:
             self.client.indices.create(index=name, body={
                 "settings": {"index.knn": True},
                 "mappings": {"properties": {
+                    # ponytail: no explicit knn method/engine — default suffices for the
+                    # demo. For real deploys use lucene/faiss so the query's group filter
+                    # runs during search, not as post-filtering.
                     "embedding": {"type": "knn_vector", "dimension": self.dim},
                     "groups": {"type": "keyword"},
                     "doc_id": {"type": "keyword"},
