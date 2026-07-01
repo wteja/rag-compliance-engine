@@ -60,7 +60,7 @@ retrieval path — the new lexical arm can't surface a chunk the dense arm could
 
 > Slice 3 added an `output_redactions` audit column. If you ran an earlier slice, reset the
 > database first: `docker compose down -v` (drops the Postgres/Chroma volumes), then bring the
-> stack back up. Migrations (Alembic) are the production upgrade path; the demo recreates the DB.
+> stack back up. Alembic migrations are the *planned* production upgrade path; the demo recreates the DB.
 
 ```bash
 docker compose up -d --build
