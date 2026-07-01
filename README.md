@@ -15,13 +15,29 @@ RAG with access control, audit, and PII redaction enforced at the data layer —
 
 ## Architecture
 
-```
-INGEST (admin):  file -> parse -> chunk -> PII-redact -> embed -> store(Chroma, tag=group)
-QUERY (user):    JWT -> filter by groups -> top-k -> prompt -> generate -> audit -> answer
-AUDIT (auditor): GET /audit
+```mermaid
+flowchart LR
+    subgraph ingest["INGEST · admin"]
+        F[file pdf/txt/md] --> P[parse] --> C[chunk] --> R[PII-redact<br/>Presidio] --> E1[embed]
+    end
+    subgraph query["QUERY · user"]
+        J[JWT → groups] --> RET[retrieve top-k<br/>WHERE groups ∈ user.groups]
+        RET --> PR[build prompt<br/>allowed chunks only] --> G[generate] --> ANS[answer + citations]
+    end
+    E1 -->|tag = group| DB[(ChromaDB)]
+    DB --> RET
+    RET -.audit every call.-> LOG[(Postgres<br/>audit_logs)]
+    G -.audit.-> LOG
+    A[GET /audit · auditor] --> LOG
+
+    style RET fill:#ffe0e0,stroke:#c00,stroke-width:2px
+    style R fill:#e0e0ff,stroke:#00c
 ```
 
-Providers are behind `VectorStore` / `LLMProvider` interfaces (Chroma + Ollama now; AWS later).
+The red node is the security boundary: access filtering happens **in the vector store**, so
+finance chunks never enter a marketing user's candidate set — prompt injection can't reach data
+that was never retrieved. Providers sit behind `VectorStore` / `LLMProvider` interfaces
+(Chroma + Ollama now; AWS Bedrock + OpenSearch later).
 
 ## Quickstart (5 minutes)
 

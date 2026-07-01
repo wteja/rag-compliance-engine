@@ -34,7 +34,7 @@ services:
       RCE_DATABASE_URL: postgresql+psycopg2://rce:rce@postgres:5432/rce
       RCE_CHROMA_PATH: /data/chroma
       RCE_OLLAMA_URL: http://ollama:11434
-      RCE_JWT_SECRET: dev-secret-change-me
+      RCE_JWT_SECRET: dev-secret-change-me-in-production-32chars-min
       RCE_EMBED_MODEL: nomic-embed-text
       RCE_GEN_MODEL: llama3
     ports: ["8000:8000"]
