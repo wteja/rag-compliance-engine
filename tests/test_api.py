@@ -34,8 +34,8 @@ def _client(llm=None):
     return TestClient(app)
 
 
-def _bearer(role, groups):
-    return {"Authorization": f"Bearer {make_token('u-' + role, groups, role)}"}
+def _bearer(role, groups, tenant="acme"):
+    return {"Authorization": f"Bearer {make_token('u-' + role, groups, role, tenant)}"}
 
 
 def _ingest(client, content, filename, groups):

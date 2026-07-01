@@ -81,7 +81,7 @@ def test_reranker_determines_final_order():
 
 def test_answer_query_abstains_when_no_access():
     store, lexical, s = _seeded()
-    p = Principal("bob", ["hr"], "user")
+    p = Principal("bob", ["hr"], "user", "acme")
     out = answer_query("anything", p, store, lexical, FakeLLM(), FakeReranker(), s, CFG)
     assert out["answer"] == ABSTAIN
     assert out["citations"] == []
@@ -91,7 +91,7 @@ def test_answer_query_abstains_when_no_access():
 
 def test_answer_query_audits_on_llm_failure_then_raises():
     store, lexical, s = _seeded()
-    p = Principal("alice", ["marketing"], "user")
+    p = Principal("alice", ["marketing"], "user", "acme")
     with pytest.raises(LLMUnavailable):
         answer_query("anything", p, store, lexical, FakeLLM(fail_generate=True), FakeReranker(), s, CFG)
     row = read_audit(s)[0]
@@ -128,7 +128,7 @@ def test_output_redaction_masks_generated_pii():
         def generate(self, prompt):
             return "Reach Jane at jane@acme.com or 415-555-0199."
 
-    p = Principal("alice", ["marketing"], "user")
+    p = Principal("alice", ["marketing"], "user", "acme")
     out = answer_query("campaign", p, store, lexical, PiiLLM(), FakeReranker(), s, CFG)
 
     assert "jane@acme.com" not in out["answer"]
@@ -140,7 +140,7 @@ def test_output_redaction_masks_generated_pii():
 
 def test_clean_output_records_empty_dict():
     store, lexical, s = _seeded()
-    p = Principal("alice", ["marketing"], "user")
+    p = Principal("alice", ["marketing"], "user", "acme")
     # default FakeLLM.generate returns "generated answer" (no PII)
     answer_query("campaign", p, store, lexical, FakeLLM(), FakeReranker(), s, CFG)
     assert read_audit(s)[0].output_redactions == {}
@@ -153,7 +153,7 @@ def test_output_redaction_failure_raises_and_audits_null(monkeypatch):
         raise RuntimeError("presidio down")
 
     monkeypatch.setattr("app.retrieve.redact_with_counts", boom)
-    p = Principal("alice", ["marketing"], "user")
+    p = Principal("alice", ["marketing"], "user", "acme")
     with pytest.raises(OutputRedactionError):
         answer_query("campaign", p, store, lexical, FakeLLM(), FakeReranker(), s, CFG)
     row = read_audit(s)[0]

@@ -10,16 +10,22 @@ class Principal:
     sub: str
     groups: list[str]
     role: str
+    tenant: str
 
 
 def decode_token(token: str) -> Principal:
     payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    return Principal(sub=payload["sub"], groups=payload["groups"], role=payload["role"])
+    return Principal(
+        sub=payload["sub"],
+        groups=payload["groups"],
+        role=payload["role"],
+        tenant=payload["tenant"],
+    )
 
 
-def make_token(sub: str, groups: list[str], role: str) -> str:
+def make_token(sub: str, groups: list[str], role: str, tenant: str) -> str:
     return jwt.encode(
-        {"sub": sub, "groups": groups, "role": role},
+        {"sub": sub, "groups": groups, "role": role, "tenant": tenant},
         settings.jwt_secret,
         algorithm=settings.jwt_algorithm,
     )
