@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     embed_model: str = "nomic-embed-text"
     gen_model: str = "llama3"
     top_k: int = 4
+    dense_n: int = 20
+    lexical_n: int = 20
+    rrf_k: int = 60
+    rerank_top_n: int = 20
+    rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 
 settings = Settings()
