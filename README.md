@@ -1,5 +1,9 @@
 # RAG Compliance Engine
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
+![Tests](https://img.shields.io/badge/tests-55%20passing-brightgreen.svg)
+
 RAG with access control, audit, and PII redaction enforced at the data layer — not the prompt.
 
 ## Why this is different
@@ -52,8 +56,9 @@ flowchart LR
 The red nodes are the security boundary: the dense arm enforces access **in the vector
 store** (a Chroma `WHERE groups ∈ user.groups` clause), while the in-memory BM25
 (lexical) arm has no WHERE clause and filters in the application layer before fusion.
-Providers sit behind `VectorStore` / `LLMProvider` interfaces (Chroma + Ollama now;
-AWS Bedrock + OpenSearch later).
+Providers sit behind `VectorStore` / `LLMProvider` interfaces — Chroma + Ollama locally,
+AWS Bedrock + OpenSearch via `RCE_BACKEND=aws` ([see below](#deploying-on-aws-bedrock--opensearch)),
+with no change to the pipeline in between.
 
 Retrieval is two-stage: dense (vector) and BM25 (lexical) recall are fused with
 Reciprocal Rank Fusion, then a cross-encoder reranks the candidates. **Both arms
@@ -112,7 +117,7 @@ OpenSearch (per-tenant kNN indexes with the same group access filter).
 
 ## Roadmap
 
-Slice 2: hybrid retrieval + rerank ✅ · Slice 3: output-side PII ✅ · Slice 4: multi-tenant ✅ · Slice 5: AWS (Bedrock + OpenSearch) ✅.
+Slice 1: security spine (access control + audit) ✅ · Slice 2: hybrid retrieval + rerank ✅ · Slice 3: output-side PII ✅ · Slice 4: multi-tenant ✅ · Slice 5: AWS (Bedrock + OpenSearch) ✅.
 
 ## Tests
 
@@ -122,3 +127,13 @@ cd src && pip install -r requirements.txt
 python -m spacy download en_core_web_lg
 pytest -v
 ```
+
+## Contributing & Security
+
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Because this is a
+security/compliance project, please report vulnerabilities privately per
+[SECURITY.md](SECURITY.md) rather than opening a public issue.
+
+## License
+
+[MIT](LICENSE) © Weerayut Teja
