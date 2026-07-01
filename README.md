@@ -17,6 +17,10 @@ RAG with access control, audit, and PII redaction enforced at the data layer —
    before embedding, and every generated answer is redacted again before it leaves the API.
    The audit records what the output pass removed (`output_redactions`), and if that pass
    can't run, the query fails closed (500) rather than return an unverified answer.
+4. **Hard multi-tenant isolation.** Each tenant's vectors live in a physically separate
+   Chroma collection (`chunks__<tenant>`), so a query for one tenant runs against only that
+   tenant's data — cross-tenant retrieval is impossible by construction, not just filtered.
+   Audit rows are tenant-scoped; an auditor sees only their own tenant.
 
 ## Architecture
 
@@ -58,9 +62,9 @@ retrieval path — the new lexical arm can't surface a chunk the dense arm could
 
 ## Quickstart (5 minutes)
 
-> Slice 3 added an `output_redactions` audit column. If you ran an earlier slice, reset the
-> database first: `docker compose down -v` (drops the Postgres/Chroma volumes), then bring the
-> stack back up. Alembic migrations are the *planned* production upgrade path; the demo recreates the DB.
+> Slices 3–4 added audit/document columns (`output_redactions`, `tenant_id`). If you ran an
+> earlier slice, reset the database first: `docker compose down -v`, then bring the stack back
+> up. Alembic migrations are the *planned* production upgrade path; the demo recreates the DB.
 
 ```bash
 docker compose up -d --build
@@ -86,7 +90,7 @@ curl -s localhost:8000/audit -H "Authorization: Bearer <AUDITOR_TOKEN>" | jq '.[
 
 ## Roadmap
 
-Slice 2: hybrid retrieval + rerank ✅ · Slice 3: output-side PII ✅ · Slice 4: multi-tenant · Slice 5: AWS (Bedrock + OpenSearch).
+Slice 2: hybrid retrieval + rerank ✅ · Slice 3: output-side PII ✅ · Slice 4: multi-tenant ✅ · Slice 5: AWS (Bedrock + OpenSearch).
 
 ## Tests
 
