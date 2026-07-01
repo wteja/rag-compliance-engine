@@ -6,7 +6,8 @@ RAG with access control, audit, and PII redaction enforced at the data layer —
 
 1. **Access control at retrieval, not in the prompt.** A chunk is filtered out of the
    candidate set by the vector store before anything reaches the LLM. A marketing user
-   *cannot* retrieve a finance chunk, so no prompt injection can leak it.
+   *cannot* retrieve a finance chunk, so no prompt injection can leak it. The guarantee
+   holds on both the dense (vector) arm and the lexical (BM25) arm.
 2. **Provable audit trail.** Every query logs who asked, which chunks were returned
    (id, source, score), how many were withheld by access control (`filtered_out_count`),
    the exact prompt, the model, and the response. Note: the `score` field is a vector
@@ -21,23 +22,33 @@ flowchart LR
         F[file pdf/txt/md] --> P[parse] --> C[chunk] --> R[PII-redact<br/>Presidio] --> E1[embed]
     end
     subgraph query["QUERY · user"]
-        J[JWT → groups] --> RET[retrieve top-k<br/>WHERE groups ∈ user.groups]
-        RET --> PR[build prompt<br/>allowed chunks only] --> G[generate] --> ANS[answer + citations]
+        J[JWT → groups] --> DENSE[dense: Chroma WHERE groups ∈ user.groups]
+        J --> LEX[lexical: BM25, filter to groups]
+        DENSE --> FUSE[RRF fuse]
+        LEX --> FUSE
+        FUSE --> RR[cross-encoder rerank] --> PR[build prompt<br/>allowed chunks only] --> G[generate] --> ANS[answer + citations]
     end
     E1 -->|tag = group| DB[(ChromaDB)]
-    DB --> RET
-    RET -.audit every call.-> LOG[(Postgres<br/>audit_logs)]
+    DB --> DENSE
+    DENSE -.audit every call.-> LOG[(Postgres<br/>audit_logs)]
+    LEX -.audit every call.-> LOG
     G -.audit.-> LOG
     A[GET /audit · auditor] --> LOG
 
-    style RET fill:#ffe0e0,stroke:#c00,stroke-width:2px
+    style DENSE fill:#ffe0e0,stroke:#c00,stroke-width:2px
+    style LEX fill:#ffe0e0,stroke:#c00,stroke-width:2px
     style R fill:#e0e0ff,stroke:#00c
 ```
 
-The red node is the security boundary: access filtering happens **in the vector store**, so
+The red nodes are the security boundary: access filtering happens **in both retrieval arms**, so
 finance chunks never enter a marketing user's candidate set — prompt injection can't reach data
 that was never retrieved. Providers sit behind `VectorStore` / `LLMProvider` interfaces
 (Chroma + Ollama now; AWS Bedrock + OpenSearch later).
+
+Retrieval is two-stage: dense (vector) and BM25 (lexical) recall are fused with
+Reciprocal Rank Fusion, then a cross-encoder reranks the candidates. **Both arms
+filter to the user's groups before fusion**, so the access guarantee holds on every
+retrieval path — the new lexical arm can't surface a chunk the dense arm couldn't.
 
 ## Quickstart (5 minutes)
 
@@ -65,7 +76,7 @@ curl -s localhost:8000/audit -H "Authorization: Bearer <AUDITOR_TOKEN>" | jq '.[
 
 ## Roadmap
 
-Slice 2: hybrid retrieval + rerank · Slice 3: output-side PII · Slice 4: multi-tenant · Slice 5: AWS (Bedrock + OpenSearch).
+Slice 2: hybrid retrieval + rerank ✅ · Slice 3: output-side PII · Slice 4: multi-tenant · Slice 5: AWS (Bedrock + OpenSearch).
 
 ## Tests
 
