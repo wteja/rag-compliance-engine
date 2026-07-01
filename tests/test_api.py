@@ -111,3 +111,8 @@ def test_ingest_invalidates_bm25_cache():
     _ingest(client, b"Marketing launch plan across channels.", "mkt.txt", ["marketing"])
     r = client.post("/query", headers=_bearer("user", ["marketing"]), json={"query": "launch plan"})
     assert {c["source"] for c in r.json()["citations"]} == {"mkt.txt"}  # index rebuilt after ingest
+
+    row = client.get("/audit", headers=_bearer("auditor", [])).json()[0]
+    # dense arm alone would also surface this chunk (FakeLLM.embed is constant), so only
+    # lexical_rank being set proves the BM25 index was actually rebuilt after ingest.
+    assert row["retrieved_chunks"][0]["lexical_rank"] is not None
